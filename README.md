@@ -1,2 +1,8 @@
-# option-data-science
+# Option : Data Science
 Ce dépôt GitHub contient le travail effectué à l'occasion de l'option Data Science, réalisée du 24 Mars 2025 au 25 Avril 2025.
+
+## Membres du groupe
+- [Warren GAURE](https://github.com/warren-gaure)
+- [Membre n°2](https://github.com/)
+- [Membre n°3](https://github.com/)
+- [Membre n°4](https://github.com/)
