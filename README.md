@@ -8,7 +8,8 @@ Ce dépôt GitHub contient le travail effectué à l'occasion de l'option Data S
 - [Membre n°4](https://github.com/)
 
 ## Contenu du dépôt
-- `livrable1/`: Dossier contenant les fichiers pour le livrable n°1.
-- `livrable2/`: Dossier contenant les fichiers pour le livrable n°2.
-- `livrable3/`: Dossier contenant les fichiers pour le livrable n°3.
-- `README.md`: Ce fichier.
+- `livrable1/` : Dossier contenant les fichiers pour le livrable n°1.
+- `livrable2/` : Dossier contenant les fichiers pour le livrable n°2.
+- `livrable3/` : Dossier contenant les fichiers pour le livrable n°3.
+- `README.md` : Ce fichier.
+- `requirements.txt` : Le fichier contenant les packages à installer pour run le projet. 
