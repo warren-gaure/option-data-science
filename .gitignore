@@ -1,6 +1,7 @@
-# Dataset folder
+# Project folders
 dataset_livrable_1/
-dataset_livrable_2/
+Dataset/
+logs/fit/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
