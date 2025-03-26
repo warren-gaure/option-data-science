@@ -1,6 +1,5 @@
 # Project folders
-dataset_livrable_1/
-Dataset/
+dataset_*/
 logs/fit/
 
 # Byte-compiled / optimized / DLL files
