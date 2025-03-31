@@ -1,7 +1,8 @@
 # Project folders
 dataset_*/
 logs/fit/
-
+hyperband/
+checkpoints/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
