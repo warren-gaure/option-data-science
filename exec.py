@@ -12,12 +12,20 @@ from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-dataset_directory = "C:\\DataScience\\Project\\dataset_livrable_1\\"
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
+      
+dataset_directory = "./dataset_livrable_1/"
 log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-image_h = 180
-image_w = 180
-batch_s = 32
+image_h = 128
+image_w = 128
+batch_s = 16
 
 train_set, test_set = keras.utils.image_dataset_from_directory(
     dataset_directory,
@@ -53,19 +61,9 @@ images, labels = next(iter(train_set.take(1)))
 print(f"Tensor des images : {images.shape}")
 print(f"Tensor des labels : {labels.shape}")
 
-plt.figure(figsize = (8, 8))
-for images, labels in train_set.take(10):
-    for i in range(9):
-        ax = plt.subplot(3, 3, i + 1)
-        plt.imshow(images[i].numpy().astype("uint8"))
-        plt.title(class_names[labels[i].numpy()])
-        plt.axis("off")
-    plt.savefig("sample_images.png")
-
-AUTOTUNE = tf.data.experimental.AUTOTUNE
-
-train_set = train_set.cache().shuffle(1000).prefetch(buffer_size = AUTOTUNE)
-test_set = test_set.cache().prefetch(buffer_size = AUTOTUNE)
+################################################
+# Create the model
+################################################
 
 num_classes = len(class_names)
 
@@ -104,34 +102,36 @@ def create_model(name, use_dropout = False, show_summary = True):
     
     return model
 
-model = create_model("Base")
 
-#tensorboard_callback = keras.callbacks.TensorBoard(
-#    log_dir = log_dir,
-#    histogram_freq = 1
-#)
-#
-#checkpoint_callback = keras.callbacks.ModelCheckpoint(
-#    filepath = 'checkpoints/best_model.keras',
-#    monitor = 'val_accuracy',
-#    save_best_only = True,
-#    save_weights_only = False,
-#    mode = 'max',
-#    verbose = 1
-#)
-#
-#callbacks = [tensorboard_callback, checkpoint_callback]
-callbacks = []
+################################################
+# Train the model
+################################################
+
+tensorboard_callback = keras.callbacks.TensorBoard(
+    log_dir = log_dir,
+    histogram_freq = 1
+)
+
+checkpoint_callback = keras.callbacks.ModelCheckpoint(
+    filepath = 'checkpoints/best_model.keras',
+    monitor = 'val_accuracy',
+    save_best_only = True,
+    save_weights_only = False,
+    mode = 'max',
+    verbose = 1
+)
+
+callbacks = [tensorboard_callback, checkpoint_callback]
 
 def train_model(model, train_set = train_set, test_set = test_set, epochs = 10):
     
-    #checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
+    checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
     
     history = model.fit(
         train_set,
         validation_data = test_set,
         epochs = epochs,
-        #callbacks = callbacks
+        callbacks = callbacks
     )
     
     accuracy = history.history['accuracy']
@@ -157,7 +157,10 @@ def train_model(model, train_set = train_set, test_set = test_set, epochs = 10):
     
     plt.savefig("training_results.png")
 
-train_model(model)
+
+################################################
+# Display confusion matrix
+################################################
 
 X_test = []
 y_true = []
@@ -178,16 +181,23 @@ def display_matrix(model, X_test = X_test, y_true = y_true, class_names = class_
     plt.title("Matrice de confusion")
     plt.xticks(rotation = 45)
     plt.savefig("confusion_matrix.png")
-
-#display_matrix(model)
-
-
+  
 ################################################
-# Execute all
+# Execute classes (Data Augmentation)
 ################################################
 
-model = create_model("All", use_dropout = True)
-callbacks.append(early_stopping)
-train_model(model, train_set = augmented_train_set,epochs = 20)
+data_augmentation = keras.Sequential([
+    layers.RandomFlip(input_shape = (image_h, image_w, 3), mode = 'horizontal_and_vertical'),
+    layers.RandomRotation(factor = 0.1, fill_mode = 'nearest'),
+    layers.RandomZoom(height_factor = 0.1, fill_mode = 'nearest'),
+])
+
+augmented_train_set = train_set.map(lambda x, y: (data_augmentation(x, training = True), y))
+
+#model = create_model("Base")
+model = create_model("Augmentation")
+
+#train_model(model)
+train_model(model, train_set = augmented_train_set)
+
 display_matrix(model)
-model.save("model.keras")
