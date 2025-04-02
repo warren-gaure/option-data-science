@@ -12,20 +12,12 @@ from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    try:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-    except RuntimeError as e:
-        print(e)
-      
-dataset_directory = "./dataset_livrable_1/"
+dataset_directory = "C:\\DataScience\\Project\\dataset_livrable_1\\"
 log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-image_h = 128
-image_w = 128
-batch_s = 16
+image_h = 180
+image_w = 180
+batch_s = 32
 
 train_set, test_set = keras.utils.image_dataset_from_directory(
     dataset_directory,
@@ -61,9 +53,19 @@ images, labels = next(iter(train_set.take(1)))
 print(f"Tensor des images : {images.shape}")
 print(f"Tensor des labels : {labels.shape}")
 
-################################################
-# Create the model
-################################################
+plt.figure(figsize = (8, 8))
+for images, labels in train_set.take(10):
+    for i in range(9):
+        ax = plt.subplot(3, 3, i + 1)
+        plt.imshow(images[i].numpy().astype("uint8"))
+        plt.title(class_names[labels[i].numpy()])
+        plt.axis("off")
+    plt.savefig("sample_images.png")
+
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+
+train_set = train_set.cache().shuffle(1000).prefetch(buffer_size = AUTOTUNE)
+test_set = test_set.cache().prefetch(buffer_size = AUTOTUNE)
 
 num_classes = len(class_names)
 
@@ -102,37 +104,33 @@ def create_model(name, use_dropout = False, show_summary = True):
     
     return model
 
+model = create_model("Base")
 
-################################################
-# Train the model
-################################################
+tensorboard_callback = keras.callbacks.TensorBoard(
+    log_dir = log_dir,
+    histogram_freq = 1
+)
 
-#tensorboard_callback = keras.callbacks.TensorBoard(
-#    log_dir = log_dir,
-#    histogram_freq = 1
-#)
-#
-#checkpoint_callback = keras.callbacks.ModelCheckpoint(
-#    filepath = 'checkpoints/best_model.keras',
-#    monitor = 'val_accuracy',
-#    save_best_only = True,
-#    save_weights_only = False,
-#    mode = 'max',
-#    verbose = 1
-#)
-#
-#callbacks = [tensorboard_callback, checkpoint_callback]
-callbacks = []
+checkpoint_callback = keras.callbacks.ModelCheckpoint(
+    filepath = 'checkpoints/best_model.keras',
+    monitor = 'val_accuracy',
+    save_best_only = True,
+    save_weights_only = False,
+    mode = 'max',
+    verbose = 1
+)
+
+callbacks = [tensorboard_callback, checkpoint_callback]
 
 def train_model(model, train_set = train_set, test_set = test_set, epochs = 10):
     
-    #checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
+    checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
     
     history = model.fit(
         train_set,
         validation_data = test_set,
         epochs = epochs,
-        callbacks = callbacks
+        #callbacks = callbacks
     )
     
     accuracy = history.history['accuracy']
@@ -158,10 +156,7 @@ def train_model(model, train_set = train_set, test_set = test_set, epochs = 10):
     
     plt.savefig("training_results.png")
 
-
-################################################
-# Display confusion matrix
-################################################
+train_model(model)
 
 X_test = []
 y_true = []
@@ -182,102 +177,5 @@ def display_matrix(model, X_test = X_test, y_true = y_true, class_names = class_
     plt.title("Matrice de confusion")
     plt.xticks(rotation = 45)
     plt.savefig("confusion_matrix.png")
-  
 
-################################################
-# Hyperparameters
-################################################
-def build_model(hp):
-    units = hp.Int("units", min_value=32, max_value=512, step=32)
-    activation = hp.Choice("activation", ["relu", "tanh"])
-    dropout = hp.Boolean("dropout")
-    lr = hp.Float("lr", min_value=1e-4, max_value=1e-2, sampling="log")
-    # call existing model-building code with the hyperparameter values.
-    model = create_model(
-        name="Tuner",
-        use_dropout=dropout,
-        show_summary=False,
-        lr=lr,
-        activation=activation
-    )
-    return model
-
-tuner = kt.Hyperband(
-    hypermodel = build_model,
-    objective = 'val_accuracy',
-    max_epochs = 10,
-    factor = 3,
-    directory = 'hyperband',
-    project_name = 'hyperband_test'
-)
-stop_early = keras.callbacks.EarlyStopping(
-    monitor = 'val_accuracy',
-    patience = 5,
-    restore_best_weights = True
-)
-
-train_size = int(0.8 * len(train_set))  # 80% for training
-val_size = len(train_set) - train_size  # 20% for validation
-
-train_dataset = train_set.take(train_size)
-val_dataset = train_set.skip(train_size)
-
-tuner.search(train_dataset, validation_data=val_dataset, epochs=50, validation_split=0.2, callbacks=[stop_early])
-
-# Get the optimal hyperparameters
-best_hps = tuner.get_best_hyperparameters(num_trials=1)
-
-print(best_hps.values)
-
-model_hp = tuner.hypermodel.build(best_hps)
-history = model_hp.fit(train_dataset, validation_data=val_dataset, epochs=10,validation_split=0.2)
-
-val_acc_per_epoch = history.history['val_accuracy']
-best_epoch = val_acc_per_epoch.index(max(val_acc_per_epoch)) + 1
-print('Best epoch: %d' % (best_epoch,))
-
-hypermodel = tuner.hypermodel.build(best_hps)
-
-# Retrain the model
-hypermodel.fit(train_dataset, validation_data=val_dataset,epochs=best_epoch, validation_split=0.2)
-
-################################################
-# Execute classes
-################################################
-
-
-data_augmentation = keras.Sequential([
-    layers.RandomFlip(input_shape = (image_h, image_w, 3), mode = 'horizontal_and_vertical'),
-    layers.RandomRotation(factor = 0.1, fill_mode = 'nearest'),
-    layers.RandomZoom(height_factor = 0.1, fill_mode = 'nearest'),
-])
-augmented_train_set = train_set.map(lambda x, y: (data_augmentation(x, training = True), y))
-
-early_stopping = keras.callbacks.EarlyStopping(
-    monitor = 'val_accuracy',
-    patience = 2,
-    mode = 'max',
-    restore_best_weights = True
-)
-
-#model = create_model("Base")
-#model = create_model("Augmentation")
-#model = create_model("Dropout", use_dropout = True)
-#model = create_model("Early Stopping")
-
-#train_model(model)
-#train_model(model, train_set = augmented_train_set)
-#train_model(model, epochs = 20)
-
-#display_matrix(model)
-
-
-################################################
-# Execute all
-################################################
-
-model = create_model("All", use_dropout = True)
-callbacks.append(early_stopping)
-train_model(model, train_set = augmented_train_set,epochs = 20)
 display_matrix(model)
-model.save("model.keras")
