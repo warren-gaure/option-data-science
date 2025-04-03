@@ -106,25 +106,26 @@ def create_model(name, use_dropout = False, show_summary = True):
 
 model = create_model("Base")
 
-tensorboard_callback = keras.callbacks.TensorBoard(
-    log_dir = log_dir,
-    histogram_freq = 1
-)
-
-checkpoint_callback = keras.callbacks.ModelCheckpoint(
-    filepath = 'checkpoints/best_model.keras',
-    monitor = 'val_accuracy',
-    save_best_only = True,
-    save_weights_only = False,
-    mode = 'max',
-    verbose = 1
-)
-
-callbacks = [tensorboard_callback, checkpoint_callback]
+#tensorboard_callback = keras.callbacks.TensorBoard(
+#    log_dir = log_dir,
+#    histogram_freq = 1
+#)
+#
+#checkpoint_callback = keras.callbacks.ModelCheckpoint(
+#    filepath = 'checkpoints/best_model.keras',
+#    monitor = 'val_accuracy',
+#    save_best_only = True,
+#    save_weights_only = False,
+#    mode = 'max',
+#    verbose = 1
+#)
+#
+#callbacks = [tensorboard_callback, checkpoint_callback]
+callbacks = []
 
 def train_model(model, train_set = train_set, test_set = test_set, epochs = 10):
     
-    checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
+    #checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
     
     history = model.fit(
         train_set,
@@ -178,4 +179,15 @@ def display_matrix(model, X_test = X_test, y_true = y_true, class_names = class_
     plt.xticks(rotation = 45)
     plt.savefig("confusion_matrix.png")
 
+#display_matrix(model)
+
+
+################################################
+# Execute all
+################################################
+
+model = create_model("All", use_dropout = True)
+callbacks.append(early_stopping)
+train_model(model, train_set = augmented_train_set,epochs = 20)
 display_matrix(model)
+model.save("model.keras")
