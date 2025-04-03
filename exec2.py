@@ -4,6 +4,8 @@ import tensorflow as tf
 import collections
 import os
 import datetime
+import keras_tuner as kt
+
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tensorflow import keras
@@ -67,96 +69,97 @@ print(f"Tensor des labels : {labels.shape}")
 
 num_classes = len(class_names)
 
-def create_model(name, use_dropout = False, show_summary = True):
-    model = Sequential(name = name)
-    
-    model.add(layers.Rescaling(1./255))
-    model.add(layers.Conv2D(16, (3, 3), padding = 'same', activation = 'relu'))
+def create_model(name, use_dropout=False, show_summary=True, hparams=None,activation='relu'):
+    model = Sequential(name=name)
+    model.add(layers.Rescaling(1.0 / 255))
+
+    # Use hyperparameters if available, otherwise default values
+    num_units = hparams.get('units', 128) if hparams else 128
+    activation = hparams.get('activation', 'relu') if hparams else 'relu'
+    dropout_rate = hparams.get('dropout', 0.5) if hparams else 0.5
+
+    model.add(layers.Conv2D(16, (3, 3), padding='same', activation=activation))
     model.add(layers.MaxPooling2D((2, 2)))
-    
-    if use_dropout:
-        model.add(layers.Dropout(0.25))
-    
-    model.add(layers.Conv2D(32, (3, 3), padding = 'same', activation = 'relu'))
-    model.add(layers.Conv2D(64, (3, 3), padding = 'same', activation = 'relu'))
-    
-    if use_dropout:
-        model.add(layers.Dropout(0.25))
-    
+
+    if use_dropout and dropout_rate:
+        model.add(layers.Dropout(dropout_rate))
+
+    model.add(layers.Conv2D(32, (3, 3), padding='same', activation=activation))
+    model.add(layers.Conv2D(64, (3, 3), padding='same', activation=activation))
+
+    if use_dropout and dropout_rate:
+        model.add(layers.Dropout(dropout_rate))
+
     model.add(layers.Flatten())
-    model.add(layers.Dense(128, activation = 'relu'))
-    
-    if use_dropout:
-        model.add(layers.Dropout(0.5))
-    
-    model.add(layers.Dense(num_classes, activation = 'softmax'))
-    
+    model.add(layers.Dense(num_units, activation=activation))
+
+    if use_dropout and dropout_rate:
+        model.add(layers.Dropout(dropout_rate))
+
+    model.add(layers.Dense(num_classes, activation='softmax'))
+
+    learning_rate = hparams.get('lr', 0.001) if hparams else 0.001
+    optimizer = keras.optimizers.Adam(learning_rate=learning_rate) if hparams else 'adam'
+
     model.compile(
-        optimizer = 'adam',
-        loss = keras.losses.SparseCategoricalCrossentropy(from_logits = False),
-        metrics = ['accuracy']
+        optimizer=optimizer,
+        loss=keras.losses.SparseCategoricalCrossentropy(from_logits=False),
+        metrics=['accuracy']
     )
-    
+
     if show_summary:
         model.summary()
-    
+
     return model
 
 
-################################################
+
+################################################ 
 # Train the model
 ################################################
 
-#tensorboard_callback = keras.callbacks.TensorBoard(
-#    log_dir = log_dir,
-#    histogram_freq = 1
-#)
-#
-#checkpoint_callback = keras.callbacks.ModelCheckpoint(
-#    filepath = 'checkpoints/best_model.keras',
-#    monitor = 'val_accuracy',
-#    save_best_only = True,
-#    save_weights_only = False,
-#    mode = 'max',
-#    verbose = 1
-#)
-#
-#callbacks = [tensorboard_callback, checkpoint_callback]
 callbacks = []
 
-def train_model(model, train_set = train_set, test_set = test_set, epochs = 10):
-    
-    #checkpoint_callback.filepath = f"checkpoints/best_{model.name.lower()}_model.keras"
-    
-    history = model.fit(
-        train_set,
-        validation_data = test_set,
-        epochs = epochs,
-        callbacks = callbacks
-    )
+# Function to train model with optional hyperparameter tuning
+def train_model(model, train_set, test_set, epochs=10, use_hyperparameters=False, tuner=None):
+    if use_hyperparameters and tuner:
+        train_size = int(0.8 * len(train_set))
+        val_size = len(train_set) - train_size
+        train_dataset = train_set.take(train_size)
+        val_dataset = train_set.skip(train_size)
+
+        tuner.search(train_dataset, validation_data=val_dataset, epochs=50, validation_split=0.2, callbacks=[stop_early])
+        best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+        model = tuner.hypermodel.build(best_hps)
+        history = model.fit(train_dataset, validation_data=val_dataset, epochs=10, validation_split=0.2)
+    else:
+        history = model.fit(
+            train_set,
+            validation_data=test_set,
+            epochs=epochs,
+            callbacks=callbacks
+        )
     
     accuracy = history.history['accuracy']
     validation_accuracy = history.history['val_accuracy']
-    
-    epochs_range = range(epochs) if epochs == 10 else range(len(accuracy))
-    
     loss = history.history['loss']
     validation_loss = history.history['val_loss']
     
-    plt.figure(figsize = (16, 8))
+    plt.figure(figsize=(16, 8))
     plt.subplot(1, 2, 1)
-    plt.plot(epochs_range, accuracy, label = 'Training Accuracy')
-    plt.plot(epochs_range, validation_accuracy, label = 'Validation Accuracy')
+    plt.plot(range(len(accuracy)), accuracy, label='Training Accuracy')
+    plt.plot(range(len(accuracy)), validation_accuracy, label='Validation Accuracy')
     plt.legend(loc='lower right')
     plt.title(f"Training and Validation Accuracy - {model.name}")
     
     plt.subplot(1, 2, 2)
-    plt.plot(epochs_range, loss, label = 'Training Loss')
-    plt.plot(epochs_range, validation_loss, label = 'Validation Loss')
+    plt.plot(range(len(loss)), loss, label='Training Loss')
+    plt.plot(range(len(loss)), validation_loss, label='Validation Loss')
     plt.legend(loc='upper right')
     plt.title(f"Training and Validation Loss - {model.name}")
     
     plt.savefig("training_results.png")
+    return model
 
 
 ################################################
@@ -187,20 +190,26 @@ def display_matrix(model, X_test = X_test, y_true = y_true, class_names = class_
 ################################################
 # Hyperparameters
 ################################################
+
 def build_model(hp):
     units = hp.Int("units", min_value=32, max_value=512, step=32)
     activation = hp.Choice("activation", ["relu", "tanh"])
     dropout = hp.Boolean("dropout")
-    lr = hp.Float("lr", min_value=1e-4, max_value=1e-2, sampling="log")
-    # call existing model-building code with the hyperparameter values.
+
+    hparams = {
+        "dense_units": units,
+        "activation": activation,
+        "dropout_3": 0.5 if dropout else 0.0 
+    }
+
     model = create_model(
         name="Tuner",
-        use_dropout=dropout,
+        use_dropout=dropout,  
         show_summary=False,
-        lr=lr,
-        activation=activation
+        hparams=hparams
     )
     return model
+
 
 tuner = kt.Hyperband(
     hypermodel = build_model,
@@ -216,42 +225,9 @@ stop_early = keras.callbacks.EarlyStopping(
     restore_best_weights = True
 )
 
-train_size = int(0.8 * len(train_set))  # 80% for training
-val_size = len(train_set) - train_size  # 20% for validation
-
-train_dataset = train_set.take(train_size)
-val_dataset = train_set.skip(train_size)
-
-tuner.search(train_dataset, validation_data=val_dataset, epochs=50, validation_split=0.2, callbacks=[stop_early])
-
-# Get the optimal hyperparameters
-best_hps = tuner.get_best_hyperparameters(num_trials=1)
-
-print(best_hps.values)
-
-model_hp = tuner.hypermodel.build(best_hps)
-history = model_hp.fit(train_dataset, validation_data=val_dataset, epochs=10,validation_split=0.2)
-
-val_acc_per_epoch = history.history['val_accuracy']
-best_epoch = val_acc_per_epoch.index(max(val_acc_per_epoch)) + 1
-print('Best epoch: %d' % (best_epoch,))
-
-hypermodel = tuner.hypermodel.build(best_hps)
-
-# Retrain the model
-hypermodel.fit(train_dataset, validation_data=val_dataset,epochs=best_epoch, validation_split=0.2)
-
+################################################ 
+# Execute the model
 ################################################
-# Execute classes
-################################################
-
-
-data_augmentation = keras.Sequential([
-    layers.RandomFlip(input_shape = (image_h, image_w, 3), mode = 'horizontal_and_vertical'),
-    layers.RandomRotation(factor = 0.1, fill_mode = 'nearest'),
-    layers.RandomZoom(height_factor = 0.1, fill_mode = 'nearest'),
-])
-augmented_train_set = train_set.map(lambda x, y: (data_augmentation(x, training = True), y))
 
 early_stopping = keras.callbacks.EarlyStopping(
     monitor = 'val_accuracy',
@@ -260,24 +236,31 @@ early_stopping = keras.callbacks.EarlyStopping(
     restore_best_weights = True
 )
 
-#model = create_model("Base")
-#model = create_model("Augmentation")
-#model = create_model("Dropout", use_dropout = True)
-#model = create_model("Early Stopping")
+data_augmentation = keras.Sequential([
+    layers.RandomFlip(input_shape = (image_h, image_w, 3), mode = 'horizontal_and_vertical'),
+    layers.RandomRotation(factor = 0.1, fill_mode = 'nearest'),
+    layers.RandomZoom(height_factor = 0.1, fill_mode = 'nearest'),
+])
 
-#train_model(model)
-#train_model(model, train_set = augmented_train_set)
-#train_model(model, epochs = 20)
+augmented_train_set = train_set.map(lambda x, y: (data_augmentation(x, training = True), y))
 
-#display_matrix(model)
+# Call the functions to create and train the model
+use_hyperparameters = True
+if use_hyperparameters:
+    train_size = int(0.8 * len(train_set))  # 80% for training
+    val_size = len(train_set) - train_size  # 20% for validation
 
+    train_dataset = train_set.take(train_size)
+    val_dataset = train_set.skip(train_size)
 
-################################################
-# Execute all
-################################################
+    tuner.search(train_dataset, validation_data=val_dataset, epochs=50, validation_split=0.2, callbacks=[stop_early])
+    best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+    model = create_model("HyperTuned_Model", use_dropout=True, hparams=best_hps.values)
+else:
+    model = create_model("All", use_dropout=True)
 
-model = create_model("All", use_dropout = True)
 callbacks.append(early_stopping)
-train_model(model, train_set = augmented_train_set,epochs = 20)
+model = train_model(model, train_set=augmented_train_set, test_set=test_set, epochs=20, use_hyperparameters=use_hyperparameters, tuner=tuner)
+
 display_matrix(model)
 model.save("model.keras")
