@@ -9,7 +9,7 @@ dump/
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.keras
 # C extensions
 *.so
 
