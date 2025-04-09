@@ -9,7 +9,7 @@ dump/
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.keras
 # C extensions
 *.so
 
@@ -176,3 +176,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+*.h5
