@@ -180,6 +180,3 @@ cython_debug/
 *.h5
 
 
-annotations_trainval2014/
-checkpoints/
-train2014/
