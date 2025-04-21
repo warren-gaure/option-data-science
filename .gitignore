@@ -178,3 +178,5 @@ cython_debug/
 .pypirc
 
 *.h5
+
+final_pipeline/
